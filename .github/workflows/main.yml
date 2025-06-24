@@ -1,0 +1,62 @@
+name: Python DevSecOps CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodu İndir (Checkout)
+        uses: actions/checkout@v4
+      - name: Python 3.11 Kurulumu
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Bağımlılıkları Kur
+        run: pip install -r requirements.txt
+      - name: Testleri Çalıştır
+        run: pytest
+
+  sast-scan:
+    name: Security Scan (SAST)
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodu İndir (Checkout)
+        uses: actions/checkout@v4
+      - name: Python Kurulumu
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Bandit ile Güvenlik Taraması
+        run: |
+          pip install bandit
+          bandit -r . -s B101,B104
+          
+  build-and-push-docker-image:
+    name: Build & Push Docker Image
+    needs: sast-scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Kodu İndir (Checkout)
+        uses: actions/checkout@v4
+      - name: GitHub Container Registry'ye Giriş
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Docker Imajını Build Et ve Push'la
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
